@@ -13,6 +13,8 @@ La instalación de PyTorch y Ultralytics puede ocupar bastante espacio. Actualme
 
 ## Controles iniciales
 
+Al ejecutar la primera celda, el notebook solicita la carpeta raíz que contiene `images` y `annotations`. Si existe `augmentation_manifest.csv` en la raíz o dentro de `manifests`, lo detecta automáticamente y utiliza `group_id` para impedir que aumentaciones del mismo original queden en splits distintos.
+
 El notebook se entrega con:
 
 ```python

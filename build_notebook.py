@@ -45,6 +45,17 @@ import os
 PROJECT_DIR = Path.cwd().resolve()
 CONFIG_PATH = PROJECT_DIR / "configs" / "project.yaml"
 
+# Solicitud interactiva de la carpeta que contiene images/ y annotations/.
+# YOLO_DATASET_ROOT permite ejecutar pruebas automáticas sin bloquear el notebook.
+dataset_root_value = os.environ.get("YOLO_DATASET_ROOT", "").strip().strip('"')
+if not dataset_root_value:
+    dataset_root_value = input(
+        "Ingrese la carpeta que contiene images y annotations: "
+    ).strip().strip('"')
+if not dataset_root_value:
+    raise ValueError("Debe ingresar una carpeta de datos.")
+DATASET_ROOT = Path(dataset_root_value).expanduser().resolve()
+
 # Valores seguros al abrir el notebook.
 SMOKE_TEST = os.environ.get("YOLO_SMOKE_TEST", "1") == "1"
 BUILD_DATASET = os.environ.get("YOLO_BUILD_DATASET", "0") == "1"
@@ -53,6 +64,7 @@ RUN_EVALUATION = False
 
 print({
     "project": str(PROJECT_DIR),
+    "dataset_root": str(DATASET_ROOT),
     "smoke_test": SMOKE_TEST,
     "build_dataset": BUILD_DATASET,
     "run_training": RUN_TRAINING,
@@ -84,14 +96,26 @@ def resolve_path(value):
     path = Path(value)
     return path if path.is_absolute() else PROJECT_DIR / path
 
-ORIGINAL_IMAGES = resolve_path(paths["original_images"])
-ORIGINAL_ANNOTATIONS = resolve_path(paths["original_annotations"])
-AUGMENTED_IMAGES = resolve_path(paths["augmented_images"])
-AUGMENTED_ANNOTATIONS = resolve_path(paths["augmented_annotations"])
-AUGMENTATION_MANIFEST = resolve_path(paths["augmentation_manifest"])
+INPUT_IMAGES = DATASET_ROOT / "images"
+INPUT_ANNOTATIONS = DATASET_ROOT / "annotations"
+manifest_candidates = [
+    DATASET_ROOT / "augmentation_manifest.csv",
+    DATASET_ROOT / "manifests" / "augmentation_manifest.csv",
+]
+AUGMENTATION_MANIFEST = next((path for path in manifest_candidates if path.is_file()), None)
 OUTPUT_ROOT = resolve_path(paths["smoke_dataset"] if SMOKE_TEST else paths["full_dataset"])
 
-print("Salida seleccionada:", OUTPUT_ROOT)
+if not INPUT_IMAGES.is_dir():
+    raise FileNotFoundError(f"No existe la carpeta de imágenes: {INPUT_IMAGES}")
+if not INPUT_ANNOTATIONS.is_dir():
+    raise FileNotFoundError(f"No existe la carpeta de anotaciones: {INPUT_ANNOTATIONS}")
+
+print({
+    "images": str(INPUT_IMAGES),
+    "annotations": str(INPUT_ANNOTATIONS),
+    "manifest": str(AUGMENTATION_MANIFEST) if AUGMENTATION_MANIFEST else None,
+    "output": str(OUTPUT_ROOT),
+})
 """
     ),
     markdown("## 3. Auditoría de imágenes, JSON y clases"),
@@ -113,44 +137,75 @@ def validate_labelme_pair(annotation_path, image_path):
         assert len(shape["points"]) >= 3
     return data
 
-original_jsons = sorted(ORIGINAL_ANNOTATIONS.glob("*.json"))
-groups = {}
-for annotation_path in original_jsons:
-    data = read_json(annotation_path)
-    image_name = Path(data["imagePath"]).name
-    image_path = ORIGINAL_IMAGES / image_name
-    data = validate_labelme_pair(annotation_path, image_path)
-    group_id = image_path.stem
-    labels = sorted({shape["label"] for shape in data["shapes"]})
-    groups[group_id] = {
-        "group_id": group_id,
-        "image": image_path,
-        "annotation": annotation_path,
-        "labels": labels,
-        "polygon_count": len(data["shapes"]),
+annotation_paths = sorted(INPUT_ANNOTATIONS.glob("*.json"))
+if not annotation_paths:
+    raise FileNotFoundError(f"No se encontraron JSON de Labelme en {INPUT_ANNOTATIONS}")
+
+manifest_rows = []
+manifest_by_annotation = {}
+if AUGMENTATION_MANIFEST:
+    with AUGMENTATION_MANIFEST.open("r", encoding="utf-8-sig", newline="") as file:
+        manifest_rows = list(csv.DictReader(file))
+    manifest_by_annotation = {
+        Path(row["output_annotation"]).name: row
+        for row in manifest_rows
+        if row.get("output_annotation")
     }
 
-with AUGMENTATION_MANIFEST.open("r", encoding="utf-8-sig", newline="") as file:
-    augmentation_rows = list(csv.DictReader(file))
+groups = {}
+missing_images = []
+for annotation_path in annotation_paths:
+    data = read_json(annotation_path)
+    image_name = Path(data.get("imagePath", "")).name
+    image_path = INPUT_IMAGES / image_name
+    if not image_name or not image_path.is_file():
+        candidates = sorted(INPUT_IMAGES.glob(f"{annotation_path.stem}.*"))
+        image_path = candidates[0] if candidates else image_path
+    if not image_path.is_file():
+        missing_images.append(annotation_path.name)
+        continue
 
-augmentation_by_group = defaultdict(list)
-for row in augmentation_rows:
-    assert row["group_id"] in groups, f"Grupo aumentado sin original: {row['group_id']}"
-    image_path = AUGMENTED_IMAGES / row["output_image"]
-    annotation_path = AUGMENTED_ANNOTATIONS / row["output_annotation"]
-    assert image_path.is_file() and annotation_path.is_file()
-    augmentation_by_group[row["group_id"]].append({
+    data = validate_labelme_pair(annotation_path, image_path)
+    row = manifest_by_annotation.get(annotation_path.name, {})
+    group_id = str(row.get("group_id") or image_path.stem)
+    variant = str(row.get("variant") or "input")
+    labels = {shape["label"] for shape in data.get("shapes", [])}
+    group = groups.setdefault(group_id, {
+        "group_id": group_id,
+        "labels": set(),
+        "polygon_count": 0,
+        "samples": [],
+    })
+    group["labels"].update(labels)
+    group["polygon_count"] += len(data.get("shapes", []))
+    group["samples"].append({
         "image": image_path,
         "annotation": annotation_path,
-        "variant": row["variant"],
+        "variant": variant,
     })
 
-assert len(groups) == 92
-assert len(augmentation_rows) == 276
+if missing_images:
+    raise FileNotFoundError(
+        f"Hay {len(missing_images)} anotaciones sin imagen; primeras: {missing_images[:5]}"
+    )
+for group in groups.values():
+    group["labels"] = sorted(group["labels"])
+
+if manifest_rows and len(manifest_by_annotation) != len(annotation_paths):
+    print(
+        "ADVERTENCIA: el manifiesto no contiene todas las anotaciones; "
+        "las faltantes se tratarán como grupos independientes."
+    )
+if not AUGMENTATION_MANIFEST:
+    print(
+        "ADVERTENCIA: no se encontró augmentation_manifest.csv. "
+        "Cada imagen será considerada un grupo independiente."
+    )
+
 print({
-    "original_groups": len(groups),
-    "original_polygons": sum(item["polygon_count"] for item in groups.values()),
-    "augmented_pairs": len(augmentation_rows),
+    "groups": len(groups),
+    "image_annotation_pairs": sum(len(item["samples"]) for item in groups.values()),
+    "polygons": sum(item["polygon_count"] for item in groups.values()),
     "labels": Counter(label for item in groups.values() for label in item["labels"]),
 })
 """
@@ -271,23 +326,14 @@ def dataset_sources(active_split_map):
     records = []
     for split_name, group_ids in active_split_map.items():
         for group_id in group_ids:
-            original = groups[group_id]
-            records.append({
-                "split": split_name,
-                "group_id": group_id,
-                "kind": "original",
-                "image": original["image"],
-                "annotation": original["annotation"],
-            })
-            if split_name == "train":
-                for variant in augmentation_by_group[group_id]:
-                    records.append({
-                        "split": split_name,
-                        "group_id": group_id,
-                        "kind": variant["variant"],
-                        "image": variant["image"],
-                        "annotation": variant["annotation"],
-                    })
+            for sample in groups[group_id]["samples"]:
+                records.append({
+                    "split": split_name,
+                    "group_id": group_id,
+                    "kind": sample["variant"],
+                    "image": sample["image"],
+                    "annotation": sample["annotation"],
+                })
     return records
 
 def stable_seed(text, base_seed):
@@ -378,6 +424,10 @@ def yolo_lines(shapes, tile_size):
 
 def materialize_dataset(plan, output_root, tiling_config):
     output_root.mkdir(parents=True, exist_ok=True)
+    for generated_name in ("images", "labels", "manifests", "previews"):
+        generated_path = output_root / generated_name
+        if generated_path.is_dir():
+            shutil.rmtree(generated_path)
     grouped = defaultdict(list)
     for record in plan:
         grouped[record["image"]].append(record)

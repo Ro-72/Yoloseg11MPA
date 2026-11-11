@@ -1,7 +1,7 @@
 {
-  "tiles": 145,
-  "positive_tiles": 93,
-  "negative_tiles": 52,
+  "tiles": 152,
+  "positive_tiles": 91,
+  "negative_tiles": 61,
   "groups": {
     "train": 1,
     "val": 1,

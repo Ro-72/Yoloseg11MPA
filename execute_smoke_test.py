@@ -14,6 +14,9 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 os.environ["YOLO_SMOKE_TEST"] = "1"
 os.environ["YOLO_BUILD_DATASET"] = "1"
+os.environ["YOLO_DATASET_ROOT"] = (
+    r"C:\Users\USER\Documents\Codex\2026-10-13\qui\outputs\microplastic_czi_pipeline\augmentation"
+)
 
 with NOTEBOOK.open("r", encoding="utf-8") as file:
     notebook = nbformat.read(file, as_version=4)
