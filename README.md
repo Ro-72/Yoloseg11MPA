@@ -32,6 +32,7 @@ Al abrirlo no generará tiles ni entrenará. Para construir primero una prueba p
 - Se conservan todos los tiles positivos y una muestra determinista de negativos.
 - Los polígonos se recortan al límite del tile y se exportan en formato YOLO Segmentation.
 - Las aumentaciones geométricas internas de Ultralytics quedan desactivadas para no duplicar transformaciones.
+- El entrenamiento está configurado con 1000 épocas como máximo, paciencia de 50 épocas y `mask_ratio: 1` para conservar las máscaras a resolución completa durante el entrenamiento.
 
 La GPU AMD RX 6600 no funciona como dispositivo CUDA en PyTorch para Windows. El notebook permite una prueba en CPU, pero el entrenamiento completo se recomienda en un equipo con GPU NVIDIA o en un servicio como Colab/Kaggle.
 

@@ -33,8 +33,9 @@ smoke_test:
 
 training:
   model: yolo11n-seg.pt
-  epochs: 100
-  patience: 20
+  epochs: 1000
+  patience: 50
+  mask_ratio: 1
   batch: 2
   image_size: 640
   workers: 0

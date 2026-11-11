@@ -531,6 +531,7 @@ if RUN_TRAINING:
         imgsz=int(training["image_size"]),
         epochs=int(training["epochs"]),
         patience=int(training["patience"]),
+        mask_ratio=int(training["mask_ratio"]),
         batch=int(training["batch"]),
         workers=int(training["workers"]),
         device=device,
