@@ -1,0 +1,41 @@
+paths:
+  original_images: 'C:/Users/USER/Documents/Codex/2026-11-08/c-users-user-documents-codex-2026/outputs/labelme_microplastic_demo/images'
+  original_annotations: 'C:/Users/USER/Documents/Codex/2026-11-08/c-users-user-documents-codex-2026/outputs/labelme_microplastic_demo/annotations'
+  augmented_images: 'C:/Users/USER/Documents/Codex/2026-10-13/qui/outputs/microplastic_czi_pipeline/augmentation/images'
+  augmented_annotations: 'C:/Users/USER/Documents/Codex/2026-10-13/qui/outputs/microplastic_czi_pipeline/augmentation/annotations'
+  augmentation_manifest: 'C:/Users/USER/Documents/Codex/2026-10-13/qui/outputs/microplastic_czi_pipeline/augmentation/manifests/augmentation_manifest.csv'
+  full_dataset: dataset_640
+  smoke_dataset: smoke_test/dataset_640
+
+classes:
+  fiber: 0
+  fragment: 1
+
+split:
+  train: 0.70
+  val: 0.15
+  test: 0.15
+  seed: 20261111
+
+tiling:
+  tile_size: 640
+  overlap: 128
+  minimum_polygon_area_px: 4.0
+  minimum_retained_fraction: 0.05
+  train_negative_ratio: 0.50
+  evaluation_negative_ratio: 1.00
+  png_compression: 6
+  estimated_bytes_per_tile: 600000
+  maximum_disk_fraction: 0.70
+
+smoke_test:
+  groups_per_split: 1
+
+training:
+  model: yolo11n-seg.pt
+  epochs: 100
+  patience: 20
+  batch: 2
+  image_size: 640
+  workers: 0
+

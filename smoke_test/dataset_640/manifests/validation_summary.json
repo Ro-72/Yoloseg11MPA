@@ -1,0 +1,12 @@
+{
+  "tiles": 145,
+  "positive_tiles": 93,
+  "negative_tiles": 52,
+  "groups": {
+    "train": 1,
+    "val": 1,
+    "test": 1
+  },
+  "failures": [],
+  "status": "PASS"
+}
